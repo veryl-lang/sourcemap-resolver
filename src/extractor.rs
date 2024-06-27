@@ -174,7 +174,7 @@ Inferred memory devices in process
 
         let ret = extract(src);
         assert_eq!(ret.len(), 1);
-        assert_eq!(ret[0].range, 20..47);
+        assert_eq!(ret[0].range, 56..83);
         assert_eq!(ret[0].path.to_string_lossy(), "test.sv");
         assert_eq!(ret[0].line, 10);
         assert_eq!(ret[0].column, None);
