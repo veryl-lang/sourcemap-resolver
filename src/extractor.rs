@@ -1,4 +1,5 @@
 use regex::Regex;
+use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::ops::Range;
 use std::path::PathBuf;
@@ -22,8 +23,8 @@ pub struct Extractor {
     lines: VecDeque<(String, Option<ExtractResult>)>,
 }
 
-impl Extractor {
-    pub fn new() -> Self {
+impl Default for Extractor {
+    fn default() -> Self {
         let patterns: Vec<Pattern> = vec![
             // "path", 10
             Pattern {
@@ -57,16 +58,22 @@ impl Extractor {
             lines: VecDeque::new(),
         }
     }
+}
+
+impl Extractor {
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn push_line(&mut self, line: &str) -> Option<(String, Option<ExtractResult>)> {
         let mut ret = None;
 
         self.lines.push_back((line.to_string(), None));
 
-        if self.lines.len() > self.window {
-            ret = self.lines.pop_front();
-        } else if self.lines.len() < self.window {
-            return None;
+        match self.lines.len().cmp(&self.window) {
+            Ordering::Greater => ret = self.lines.pop_front(),
+            Ordering::Less => return None,
+            _ => (),
         }
 
         let text = self
