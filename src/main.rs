@@ -1,6 +1,7 @@
 use anyhow::Error;
 use clap::Parser;
-use std::collections::VecDeque;
+use sourcemap_resolver::{ExtractResult, Extractor};
+use std::borrow::Borrow;
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -26,72 +27,67 @@ struct Opt {
 // Main
 // ---------------------------------------------------------------------------------------------------------------------
 
-pub fn main() -> Result<(), Error> {
-    let opt = Opt::parse();
-
-    let mut text = String::new();
-
-    if opt.files.is_empty() {
-        for line in io::stdin().lines() {
-            let line = line?;
-            text.push_str(&line);
-            text.push('\n');
-        }
-    } else {
-        for file in &opt.files {
-            text.push_str(&fs::read_to_string(file)?);
-        }
-    }
-
-    let extracts = sourcemap_resolver::extract(&text);
-
-    let mut resolves = VecDeque::new();
-
-    for extract in extracts {
+fn write(
+    output: &mut Box<dyn Write>,
+    text: &str,
+    extract: &Option<ExtractResult>,
+    opt: &Opt,
+) -> Result<(), Error> {
+    writeln!(output, "{}", &text)?;
+    if let Some(extract) = extract {
         if let Ok(resolve) =
             sourcemap_resolver::resolve(&extract.path, extract.line, extract.column)
         {
-            resolves.push_back((extract.range, resolve));
+            writeln!(
+                output,
+                "{}{} {}:{}:{}",
+                " ".repeat(extract.range.start as usize),
+                opt.indicator,
+                resolve.path.to_string_lossy(),
+                resolve.line,
+                resolve.column
+            )?;
         }
     }
+    Ok(())
+}
 
-    let mut beg = 0;
-    let mut end = 0;
-
+fn execute<I>(lines: I, opt: &Opt) -> Result<(), Error>
+where
+    I: IntoIterator,
+    I::Item: Borrow<str>,
+{
     let mut output = if let Some(x) = &opt.output {
         Box::new(File::create(x)?) as Box<dyn Write>
     } else {
         Box::new(io::stdout()) as Box<dyn Write>
     };
 
-    while end != text.len() {
-        if let Some(x) = text[end..].find('\n') {
-            end += x + 1;
-        } else {
-            end = text.len()
+    let mut extractor = Extractor::new();
+    for line in lines {
+        if let Some((text, extract)) = extractor.push_line(line.borrow()) {
+            write(&mut output, &text, &extract, opt)?;
         }
+    }
 
-        write!(output, "{}", &text[beg..end])?;
+    for (text, extract) in extractor.end() {
+        write(&mut output, &text, &extract, opt)?;
+    }
 
-        let insert = resolves
-            .front()
-            .map(|x| beg as u32 <= x.0.end && x.0.end < end as u32)
-            .unwrap_or(false);
-        if insert {
-            let head = resolves.pop_front().unwrap();
-            let column = (head.0.start as usize).saturating_sub(beg);
-            writeln!(
-                output,
-                "{}{} {}:{}:{}",
-                " ".repeat(column),
-                opt.indicator,
-                head.1.path.to_string_lossy(),
-                head.1.line,
-                head.1.column
-            )?;
+    Ok(())
+}
+
+pub fn main() -> Result<(), Error> {
+    let opt = Opt::parse();
+
+    if opt.files.is_empty() {
+        execute(io::stdin().lines().map(|x| x.unwrap()), &opt)?;
+    } else {
+        let mut text = String::new();
+        for file in &opt.files {
+            text.push_str(&fs::read_to_string(file)?);
         }
-
-        beg = end;
+        execute(text.lines(), &opt)?;
     }
 
     Ok(())
