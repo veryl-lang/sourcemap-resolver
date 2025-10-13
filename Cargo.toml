@@ -12,6 +12,6 @@ description = "Sourcemap resolving library and CLI"
 anyhow    = "1.0"
 clap      = {version = "4.5", features = ["derive"]}
 once_cell = "1.21"
-regex     = "1.11"
+regex     = "1.12"
 sourcemap = "9.2"
 thiserror = "2.0"
